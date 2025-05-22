@@ -92,6 +92,7 @@ To completely remove:
 
 - **macOS 10.15 or later** (tested to Sonoma)
 - [Privileges.app](https://github.com/SAP/macOS-enterprise-privileges) v1 or v2 in `/Applications`
+- **The script will still work if an allowed list of admins is present, even if Privileges is not installed**
 
 ---
 
