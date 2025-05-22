@@ -143,7 +143,7 @@ cat << EOF > "$DAEMON_PATH"
         <string>$SCRIPT_PATH</string>
     </array>
     <key>StartInterval</key>
-    <integer>900</integer>
+    <integer>$demoterInterval</integer>
     <key>RunAtLoad</key>
     <true/>
     <key>StandardOutPath</key>
