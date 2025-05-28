@@ -47,7 +47,7 @@ cat << 'EOSCPT' > "$SCRIPT_PATH"
 
 # === Configuration Paths ===
 SCRIPT_NAME="DemoteAdmin"
-SCRIPT_VERSION="2.13"
+SCRIPT_VERSION="2.14"
 DEMOTER_DIR="/Library/Management/demoter"
 DEMOTER_LOGS_DIR="${DEMOTER_DIR}/logs"
 DEMOTER_LOGS_DIR_ARCHIVE="${DEMOTER_LOGS_DIR}/log-archive"
@@ -151,10 +151,6 @@ fi
 
 ALLOWED_PATTERN="^($(IFS="|"; echo "${ALLOWED_ADMINS[*]}"))$"
 
-if [[ -z "$CONSOLE_USER_UID" ]]; then
-    FATAL "Unable to determine UID for console user: $CONSOLE_USER"
-fi
-
 if [[ -d "$PRIV_APP" && -f "$PRIVILEGES_INFOPLIST" ]]; then
     PRIV_PRESENT=true
     PRIV_VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$PRIVILEGES_INFOPLIST" 2>/dev/null | awk '{print $1}')
@@ -163,15 +159,27 @@ else
     PRIV_PRESENT=false
 fi
 
+if [[ "$CONSOLE_USER" == "loginwindow" || -z "$CONSOLE_USER" ]]; then
+    LOGINWINDOW_ACTIVE=true
+    NOTICE "Machine is at the login window (no user logged in); will demote all non-allowed admins."
+else
+    LOGINWINDOW_ACTIVE=false
+fi
+
+# --- Main demotion loop ---
 for user in $ALL_USERS; do
     if [[ $user =~ $ALLOWED_PATTERN ]]; then
+        NOTICE "User $user is allow-listed, skipping."
         continue
     fi
+
     if dseditgroup -o checkmember -m "$user" admin | grep -q "yes"; then
         keep_admin=false
-        if [[ "$user" == "$CONSOLE_USER" && "$PRIV_PRESENT" == "true" && -n "$CONSOLE_USER_UID" ]]; then
+
+        # Privileges.app check: only applies for active GUI user, not when at loginwindow
+        if [[ "$LOGINWINDOW_ACTIVE" == false && "$PRIV_PRESENT" == "true" && "$user" == "$CONSOLE_USER" && -n "$CONSOLE_USER_UID" ]]; then
             if [[ "$PRIV_VERSION_MAJOR" -ge 2 && -x "$PRIVILEGES_CLI_V2" ]]; then
-                status=$(/bin/launchctl asuser "$CONSOLE_USER_UID" sudo -u "$CONSOLE_USER" "${PRIVILEGES_CLI_V2}" --status 2>&1)
+                status=$(/bin/launchctl asuser "$CONSOLE_USER_UID" sudo -u "$CONSOLE_USER" "$PRIVILEGES_CLI_V2" --status 2>&1)
                 if echo "$status" | grep -q "has administrator privileges"; then
                     timeleft=$(echo "$status" | awk '/expire/ {for(i=1;i<=NF;i++) if($i~/^[0-9]+$/) print $i}')
                     if [[ "${timeleft:-0}" -gt 0 ]]; then
@@ -185,14 +193,29 @@ for user in $ALL_USERS; do
                 fi
             fi
         fi
-    if [[ "$keep_admin" == "true" ]]; then
-        NOTICE "$user is currently a Privileges.app admin (still valid) — skipping demotion (time remaining: $timeleft minutes)."
-        continue
-    fi
-        NOTICE "Demoting unauthorized admin: $user"
+
+        if [[ "$keep_admin" == "true" ]]; then
+            NOTICE "User $user is currently a Privileges.app admin (still valid) — skipping demotion${timeleft:+ (time left: $timeleft min)}."
+            continue
+        fi
+
+        if [[ "$LOGINWINDOW_ACTIVE" == true ]]; then
+            NOTICE "At loginwindow: Demoting unauthorized admin: $user"
+        else
+            NOTICE "Demoting unauthorized admin: $user"
+        fi
         dseditgroup -o edit -d "$user" admin
     fi
 done
+
+# Permissioning, in case the script has been viewed or modified
+chown -R root:wheel "${DEMOTER_DIR}"
+chmod -R go-rwx "${DEMOTER_DIR}"
+chmod 700 "${SCRIPT_PATH}"
+chmod 700 "${DEMOTER_LOGS_DIR}"
+chmod 700 "${DEMOTER_LOGS_DIR_ARCHIVE}"
+chmod 600 "${SCRIPT_LOG}"
+exit 0
 EOSCPT
 
 if [[ $? -ne 0 ]]; then
