@@ -47,11 +47,12 @@ cat << 'EOSCPT' > "$SCRIPT_PATH"
 
 # === Configuration Paths ===
 SCRIPT_NAME="DemoteAdmin"
-SCRIPT_VERSION="2.14"
+SCRIPT_VERSION="2.15"
 DEMOTER_DIR="/Library/Management/demoter"
 DEMOTER_LOGS_DIR="${DEMOTER_DIR}/logs"
 DEMOTER_LOGS_DIR_ARCHIVE="${DEMOTER_LOGS_DIR}/log-archive"
 SCRIPT_LOG="${DEMOTER_LOGS_DIR}/demoteadmins.log"
+SCRIPT_PATH="${DEMOTER_DIR}/demote-unlisted-admins"
 PROFILE_PLIST="/Library/Managed Preferences/com.demote.adminallow.plist"
 
 # === Privileges App Paths ===
