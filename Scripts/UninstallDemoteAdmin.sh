@@ -3,15 +3,15 @@
 SCRIPT_PATH="/Library/Management/demoter/demote-unlisted-admins"
 DAEMON_PATH="/Library/LaunchDaemons/com.demote.demoteadmins.plist"
 LOG_DIR="/Library/Management/demoter/logs"
-LOG_PATH="/Library/Management/demoter/logs/demoteadmins.log"
+SCRIPT_LOG="/Library/Management/demoter/logs/demoteadmins.log"
 DEMOTER_DIR="/Library/Management/demoter"
 ALLOWLIST_PLIST="/Library/Managed Preferences/com.demote.adminallow.plist"
 
 scriptName="DemoteAdmin Uninstall"
-scriptVersion="1.1"
+scriptVersion="1.2"
 
 function updateScriptLog() {
-    echo "${scriptName} ($scriptVersion): $(date +%Y-%m-%d\ %H:%M:%S) - ${1}" | tee -a "${LOG_PATH}"
+    echo "${scriptName} ($scriptVersion): $(date +%Y-%m-%d\ %H:%M:%S) - ${1}"
 }
 
 # Unload LaunchDaemon
@@ -42,9 +42,9 @@ else
 fi
 
 # Remove main demoter dir if empty (optional)
-if [ -d "$DEMOTER_DIR" ] && [ ! "$(ls -A "$DEMOTER_DIR")" ]; then
+if [ -d "$DEMOTER_DIR" ]; then
     updateScriptLog "Removing empty demoter directory: $DEMOTER_DIR"
-    rmdir "$DEMOTER_DIR"
+    rm -rf "$DEMOTER_DIR"
 fi
 
 # Remove allow-list config (Optional: if managed via Jamf, profile will repush this)

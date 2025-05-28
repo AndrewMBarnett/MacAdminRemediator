@@ -6,109 +6,95 @@ An automated solution for removing unauthorized admin rights from local macOS us
 
 ## Features
 
-- **Automatic Local Admin Demotion:**  
-    Any user not on the allow-list is demoted from `admin` group.
-- **Privileges.app Integration:**  
-    Honors temporary admin elevation granted by Privileges.app (both v1 and v2), for the logged-in user, within their allowed window.
-- **Flexible Config:**  
-    Allow-list and interval are managed via a Jamf Custom Settings Configuration Profile at `/Library/Managed Preferences/com.demote.adminallow.plist`.
-- **Jamf Ready:**  
-    Deploy as a Jamf policy script (no package needed), works with Jamf Pro Custom Settings profiles.
-- **Comprehensive Logging:**  
-    All actions are logged to `/Library/Management/demoter/logs/demoteadmins.log`.
+- **Automatically demotes all non-allowed Mac admin users**
+- **Allows temporary admin via Privileges.app** (honored for duration window)
+- **Reads admin allow-list and rotation interval from a Jamf Configuration Profile**
+- **Log file rotation and zipped archive when log size > 500 KB**
+- **Logs are securely permissioned (root only) and archived**
+- **Deploys to `/Library/Management/demoter` for security and auditability**
 
 ---
 
-## How it Works
+## Deployment (Jamf Pro)
 
-- The demotion script runs every 15 minutes (default) via a LaunchDaemon.
-    - You can adjust the interval via configuration profile (`DemoterInterval`) or script default.
-- For every local user (UID >= 501):
-    - If user is in the allow-list, they keep admin.
-    - If not, and the user is admin **and** is the logged-in user with active Privileges.app elevation: they keep admin for the allowed interval.
-    - All others are demoted to standard.
-
----
-
-## File Structure
-
-| Path                                            | Purpose                       |
-|-------------------------------------------------|-------------------------------|
-| `/Library/Management/demoter/demote_unlisted_admins` | Main demotion script          |
-| `/Library/LaunchDaemons/com.demote.demoteadmins.plist` | LaunchDaemon plist           |
-| `/Library/Management/demoter/logs/demoteadmins.log`   | Logging output                |
-| `/Library/Managed Preferences/com.demote.adminallow.plist` | Jamf admin allow-list config |
-
----
-
-## Installation (Jamf Pro Deployment)
-
-1. **Upload your deployment script** (as above) to Jamf as a "Script" policy, or run it once as root.
-2. **Deploy a Configuration Profile:**
-    - Go to Computers > Configuration Profiles in Jamf Pro.
-    - Add a "Custom Settings" payload:
-        - **Preference Domain:** `com.demote.adminallow`
-        - **Example Property List:**
-            ```xml
-            <?xml version="1.0" encoding="UTF-8"?>
-            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-            <plist version="1.0">
-            <dict>
-                <key>AllowedAdmins</key>
-                <array>
-                    <string>admin1</string>
-                    <string>admin2</string>
-                    <!-- Add more IT/admin accounts as needed -->
-                </array>
-                <!-- Optional: override daemon interval here -->
-                <key>DemoterInterval</key>
-                <integer>900</integer>
-            </dict>
-            </plist>
-            ```
+1. **Upload the full deploy script** to Jamf (e.g. as a policy script, or build a package for first-run).
+2. The script:
+   - Installs the demoter enforcement script: `/Library/Management/demoter/demote-unlisted-admins`
+   - Deploys a LaunchDaemon: `/Library/LaunchDaemons/com.demote.demoteadmins.plist`  
+     configured for your desired interval (default: every 900s = 15 min)
+   - **The script will set a default (currently 15 mins), if it can't find the Configuration Profile for the interval setting**
+   - Sets correct permissions (`root:wheel`, 700/600)
+   - Ensures log files are rotated and zipped as `/Library/Management/demoter/logs/archive/`
+3. **Create a Jamf Configuration Profile (Custom Settings):**
+   - Preference Domain: `com.demote.adminallow`
+   - Example property list:
+     ```xml
+     <plist version="1.0">
+     <dict>
+       <key>AllowedAdmins</key>
+       <array>
+         <string>admin2</string>
+         <string>admin2</string>
+       </array>
+       <key>DemoterInterval</key>
+       <integer>900</integer>
+     </dict>
+     </plist>
+     ```
+   - Only accounts in `AllowedAdmins` stay admin; all others are demoted unless using Privileges.app
 
 ---
 
-## Uninstall
+## How Log Management Works
 
-To completely remove:
-
-- Unload and remove `/Library/LaunchDaemons/com.demote.demoteadmins.plist`
-- Delete `/Library/Management/demoter/demote_unlisted_admins`
-- (Optionally) remove `/Library/Management/demoter/logs/demoteadmins.log`
-- (Optionally) remove `/Library/Managed Preferences/com.demote.adminallow.plist`  
-- Remove the configuration profile from your Jamf scope
-
----
-
-## Requirements
-
-- **macOS 10.15+** (tested through current versions)
-- Privileges.app v1 or v2 in `/Applications` for temporary elevation
-- Jamf Pro for configuration management and profile deployment
-
----
-## Requirements
-
-- **macOS 10.15 or later** (tested to Sonoma)
-- [Privileges.app](https://github.com/SAP/macOS-enterprise-privileges) v1 or v2 in `/Applications`
-- **The script will still work if an allowed list of admins is present, even if Privileges is not installed**
+- **Log file:**  
+  `/Library/Management/demoter/logs/demoteadmins.log`
+- **When log file reaches 500 KB:**  
+  - It is zipped and archived in `/Library/Management/demoter/logs/log-archive/demoteadmins_<timestamp>.zip`
+  - A new log is started; all permissions restrict logs to root.
+- **Permissions:**  
+  - Only root can access log/script/archive: directory/files are set to 700/600 and root:wheel.
+- **Archived logs** (zipped):  
+  - Only root can read/extract contents.
 
 ---
 
-## Credits & References
+## Security & Best Practice
 
-- [SAP Privileges.app](https://github.com/SAP/macOS-enterprise-privileges)
+- All script, logs, and archive directories are strictly root-owned/700 or 600 (no user can browse or view).
+- Script and daemon are non-editable and non-readable by users.
+- LaunchDaemon runs at root every interval (by config profile).
+
+---
+
+## Configuration Profile Reference
+
+| Key             | Type     | Example Value                       | Description                           |
+|-----------------|----------|-------------------------------------|---------------------------------------|
+| AllowedAdmins   | array    | `admin2`, `admin2`                  | Allowed admin accounts                |
+| DemoterInterval | integer  | `900`                               | Run interval (in seconds)             |
+
+---
+
+## How the Enforcement Works
+
+- **At every interval:**
+  - All local users are checked for admin status.
+  - Any user in `AllowedAdmins` (from config) is skipped.
+  - The currently logged-in GUI user is allowed admin for the Privileges.app elevation window.
+  - All other admins are demoted to standard users.
+- All activity and actions are logged & archived securely.
+
+---
+
+## Uninstallation
+
+- LaunchDaemon can be unloaded and removed.
+- All demoter files/logs/archives can be deleted by root.
+- Remove the config profile from Jamf scope.
+
 ---
 
 ## License
 
 MIT
-
----
-
-## Support
-
-Open a GitHub issue for bugs/enhancements or submit a Pull Request.
-
----

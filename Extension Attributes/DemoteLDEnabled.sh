@@ -2,15 +2,17 @@
 
 # This EA checks if the LaunchDaemon for demoting unauthorized admins is loaded.
 LAUNCHD_LABEL="com.demote.demoteadmins"
+# The LaunchDaemon plist file path
 PLIST="/Library/LaunchDaemons/com.demote.demoteadmins.plist"
 
-if [ ! -f "$PLIST" ]; then
-    echo "<result>LaunchDaemon plist Not Found</result>"
-    exit 0
-fi
-
-if launchctl list | grep -qw "$LAUNCHD_LABEL"; then
-    echo "<result>Loaded</result>"
+# Check if the LaunchDaemon plist file exists
+if [ -f "$PLIST" ]; then
+    if launchctl list | grep -qw "$LAUNCHD_LABEL"; then
+        echo "<result>Demote Admins Loaded</result>"
+    else
+        echo "<result>Demote Admins Not Loaded</result>"
+    fi
 else
-    echo "<result>Not Loaded</result>"
+    # If the plist file does not exist, report it
+    echo "<result>Demote Admins LaunchDaemon Not Found</result>"
 fi
