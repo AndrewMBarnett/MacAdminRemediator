@@ -94,6 +94,36 @@ An automated solution for removing unauthorized admin rights from local macOS us
 - Remove the config profile from Jamf scope.
 
 ---
+## Does This Script Require Privileges.app?
+
+**No, Privileges.app is _not_ required for this script to function.**
+
+- If Privileges.app **_is installed_**, the script will honor active temporary admin elevation for the logged-in user who used Privileges.app (within their allowed time window).
+- If Privileges.app **_is not installed_**, the script still fully enforces the allowed admin policy:
+    - **Only users listed in your `AllowedAdmins` configuration profile remain admins at all times.**
+    - **All other users with local admin rights will be detected and demoted to standard user** at every policy run—whether they were previously promoted, created manually, or granted rights through any other means.
+
+**No matter what:**  
+- The demoter script _always_ enforces your allowed admin list.
+- Privileges.app simply provides an additional "temporary exception" when present for standard users needing admin for a short time.
+
+#### What happens if you deploy Privileges.app in the future?
+
+- No change needed.  
+  The script will automatically begin honoring Privileges.app's temporary admin status for the currently logged-in user.
+
+#### What will you see in the logs if Privileges.app is not installed?
+
+- The script may log that Privileges.app was not detected (or not present).
+- Demotion decisions are still made based on your allow-list and nothing else.
+
+---
+
+**In summary:**  
+> The script works in both environments—**with or without** Privileges.app.  
+> If you're not using Privileges.app, only allow-listed users ever get/keep admin rights.
+
+---
 
 ## License
 
