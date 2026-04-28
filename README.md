@@ -160,7 +160,7 @@ Upload these scripts to Jamf Pro **Settings → Computer Management → Scripts*
 
 DemoteAdmin uses SHA-256 cryptographic hashes to detect file tampering:
 
-#### Hash Storage (`DemoteAdminSecurityInstall.sh`)
+#### Hash Storage (built into `DemoteAdminInstall.sh`)
 
 ```bash
 # Calculates and stores hashes during deployment
@@ -197,9 +197,12 @@ When tampering is detected:
 
 **Tracking Data (stored in `/var/db/.systemconfig/.tracking.plist`):**
 - `tamperCount` - Total tampering events detected
+- `lastTamperDetected` - Timestamp of most recent tampering
 - `warningAcknowledged` - User acknowledgments of security warnings
 - `autoFixCount` - Automatic remediation attempts
-- `lastTamperDetected` - Timestamp of most recent tampering
+- `demotionCount` - Total accounts demoted
+- `lastDemotedAccount` - Username most recently demoted
+- `lastDemotionTime` - Timestamp of most recent demotion
 
 ## Components
 
@@ -234,8 +237,8 @@ When tampering is detected:
 
 **Interval-Based Daemon:**
 - **Label:** `com.demote.demoteadmins`
-- **Function:** Runs demotion check every 15 minutes (configurable)
-- **Trigger:** `StartInterval`
+- **Function:** Runs demotion check every 15 minutes (configurable); also fires immediately when a new user account is created
+- **Triggers:** `StartInterval` + `WatchPaths` on `/var/db/dslocal/nodes/Default/users`
 
 **Trigger-Based Daemon:**
 - **Label:** `com.demote.privileges-trigger`
@@ -330,7 +333,29 @@ else
 fi
 ```
 
-### EA 5: Permissions Status
+### EA 5: Demoted Accounts
+**Name:** `DemoteAdmin - Demoted Accounts`  
+**File:** `DemoterDemotedAccounts.sh`
+```bash
+#!/bin/bash
+TRACKING_PLIST="/var/db/.systemconfig/.tracking.plist"
+if [[ ! -f "$TRACKING_PLIST" ]]; then
+    echo "<result>Not Tracked</result>"
+    exit 0
+fi
+chflags nouchg "$TRACKING_PLIST" 2>/dev/null
+demotion_count=$(defaults read "$TRACKING_PLIST" "demotionCount" 2>/dev/null || echo "0")
+last_account=$(defaults read "$TRACKING_PLIST" "lastDemotedAccount" 2>/dev/null)
+last_time=$(defaults read "$TRACKING_PLIST" "lastDemotionTime" 2>/dev/null)
+chflags uchg "$TRACKING_PLIST" 2>/dev/null
+if [[ -z "$last_account" || "$demotion_count" -eq 0 ]]; then
+    echo "<result>No demotions recorded</result>"
+else
+    echo "<result>$demotion_count demotion(s) — Last: $last_account ($last_time)</result>"
+fi
+```
+
+### EA 6: Permissions Status
 **Name:** `DemoteAdmin - Permissions Status`
 ```bash
 #!/bin/bash
@@ -380,7 +405,15 @@ AND
   DemoteAdmin - Permissions Status | is not | Not Installed
 ```
 
-### Smart Group 4: Needs Deployment
+### Smart Group 4: Unauthorized Account Activity
+```
+Criteria:
+  DemoteAdmin - Demoted Accounts | is not | No demotions recorded
+AND
+  DemoteAdmin - Demoted Accounts | is not | Not Tracked
+```
+
+### Smart Group 5: Needs Deployment
 ```
 Criteria:
   DemoteAdmin - Version | is | Not Installed
