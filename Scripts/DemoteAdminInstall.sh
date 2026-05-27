@@ -564,6 +564,26 @@ increment_autofix_count() {
 check_and_fix_permissions() {
     local changes_made=false
     local trigger_remediation=false
+    local remediation_reasons=()
+
+    record_reason() {
+        remediation_reasons+=("$1")
+    }
+
+    write_remediation_reasons() {
+        local joined
+        printf -v joined '%s; ' "${remediation_reasons[@]}"
+        joined="${joined%%; }"
+
+        chflags nouchg "$TRACKING_PLIST" 2>/dev/null
+        chmod 600 "$TRACKING_PLIST" 2>/dev/null
+        defaults write "$TRACKING_PLIST" "lastRemediationReason"    "$joined"
+        defaults write "$TRACKING_PLIST" "lastRemediationTimestamp" "$(date '+%Y-%m-%d %H:%M:%S')"
+        chmod 400 "$TRACKING_PLIST" 2>/dev/null
+        chflags uchg "$TRACKING_PLIST" 2>/dev/null
+        chflags hidden "$TRACKING_PLIST" 2>/dev/null
+        NOTICE "Remediation reason recorded: $joined"
+    }
     
     # Ensure log is writable temporarily
     chmod 600 "$SCRIPT_LOG" 2>/dev/null
@@ -602,20 +622,22 @@ check_and_fix_permissions() {
         NOTICE "  CRITICAL: Script permissions incorrect ($current_script_perms)"
         NOTICE "   Expected: -r-x------ (500)"
         trigger_remediation=true
+        record_reason "script permissions incorrect ($current_script_perms)"
         NOTICE "Calling increment_tamper_count from script permissions check"
         increment_tamper_count
     fi
-    
+
     # Check base directory (CRITICAL)
     current_dir_perms=$(stat -f "%Sp" "$DEMOTER_DIR" 2>/dev/null)
     if [[ "$current_dir_perms" != "drwx------" ]]; then
         NOTICE "  CRITICAL: Directory permissions incorrect ($current_dir_perms)"
         NOTICE "   Expected: drwx------ (700)"
         trigger_remediation=true
+        record_reason "demoter directory permissions incorrect ($current_dir_perms)"
         NOTICE "Calling increment_tamper_count from directory permissions check"
         increment_tamper_count
     fi
-    
+
     # Check log directory (CRITICAL)
     if [[ -d "$DEMOTER_LOGS_DIR" ]]; then
         current_log_perms=$(stat -f "%Sp" "$DEMOTER_LOGS_DIR" 2>/dev/null)
@@ -623,11 +645,12 @@ check_and_fix_permissions() {
             NOTICE "  CRITICAL: Log directory permissions incorrect ($current_log_perms)"
             NOTICE "   Expected: drwx------ (700)"
             trigger_remediation=true
+            record_reason "log directory permissions incorrect ($current_log_perms)"
             NOTICE "Calling increment_tamper_count from log directory permissions check"
             increment_tamper_count
         fi
     fi
-    
+
     # Check archive directory (CRITICAL)
     if [[ -d "$DEMOTER_LOGS_DIR_ARCHIVE" ]]; then
         current_archive_perms=$(stat -f "%Sp" "$DEMOTER_LOGS_DIR_ARCHIVE" 2>/dev/null)
@@ -635,6 +658,7 @@ check_and_fix_permissions() {
             NOTICE "  CRITICAL: Archive directory permissions incorrect ($current_archive_perms)"
             NOTICE "   Expected: drwx------ (700)"
             trigger_remediation=true
+            record_reason "archive directory permissions incorrect ($current_archive_perms)"
             NOTICE "Calling increment_tamper_count from archive directory permissions check"
             increment_tamper_count
         fi
@@ -658,6 +682,7 @@ check_and_fix_permissions() {
             if [[ "$current_script_sha" != "$stored_script_sha" ]]; then
                 NOTICE "  CRITICAL: Script content hash mismatch — file may have been modified"
                 trigger_remediation=true
+                record_reason "script hash mismatch"
                 NOTICE "Calling increment_tamper_count from hash verification"
                 increment_tamper_count
             fi
@@ -668,6 +693,7 @@ check_and_fix_permissions() {
             if [[ "$current_wrapper_sha" != "$stored_wrapper_sha" ]]; then
                 NOTICE "  CRITICAL: Wrapper content hash mismatch — file may have been modified"
                 trigger_remediation=true
+                record_reason "wrapper hash mismatch"
                 NOTICE "Calling increment_tamper_count from hash verification"
                 increment_tamper_count
             fi
@@ -678,6 +704,7 @@ check_and_fix_permissions() {
             if [[ "$current_daemon_sha" != "$stored_daemon_sha" ]]; then
                 NOTICE "  CRITICAL: Daemon plist hash mismatch — file may have been modified"
                 trigger_remediation=true
+                record_reason "daemon plist hash mismatch"
                 NOTICE "Calling increment_tamper_count from hash verification"
                 increment_tamper_count
             fi
@@ -688,6 +715,7 @@ check_and_fix_permissions() {
             if [[ "$current_trigger_sha" != "$stored_trigger_sha" ]]; then
                 NOTICE "  CRITICAL: Trigger daemon hash mismatch — file may have been modified"
                 trigger_remediation=true
+                record_reason "trigger daemon hash mismatch"
                 NOTICE "Calling increment_tamper_count from hash verification"
                 increment_tamper_count
             fi
@@ -696,6 +724,7 @@ check_and_fix_permissions() {
 
     # If critical permissions or hashes are wrong, create remediation trigger
     if [[ "$trigger_remediation" == true ]]; then
+        write_remediation_reasons
         NOTICE "=========================================="
         NOTICE "  CRITICAL SECURITY VIOLATION DETECTED"
         NOTICE "=========================================="
